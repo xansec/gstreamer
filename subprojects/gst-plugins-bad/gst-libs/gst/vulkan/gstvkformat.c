@@ -513,8 +513,8 @@ gst_vulkan_format_from_video_info (GstVideoInfo * v_info, guint plane)
 
 struct vkUsage
 {
-#if (defined(VK_VERSION_1_3) || defined(VK_VERSION_1_2) && VK_HEADER_VERSION >= 195)
-  const VkFormatFeatureFlagBits2 feature;
+#if defined (VK_KHR_format_feature_flags2)
+  const VkFormatFeatureFlagBits2KHR feature;
 #else
   const VkFormatFeatureFlagBits feature;
 #endif
@@ -535,14 +535,14 @@ _get_usage (guint64 feature)
     {VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT,
           VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT},
 #if GST_VULKAN_HAVE_VIDEO_EXTENSIONS
-    {VK_FORMAT_FEATURE_VIDEO_DECODE_OUTPUT_BIT_KHR,
+    {VK_FORMAT_FEATURE_2_VIDEO_DECODE_OUTPUT_BIT_KHR,
           VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR},
-    {VK_FORMAT_FEATURE_VIDEO_DECODE_DPB_BIT_KHR,
+    {VK_FORMAT_FEATURE_2_VIDEO_DECODE_DPB_BIT_KHR,
           VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR},
 #ifdef VK_ENABLE_BETA_EXTENSIONS
-    {VK_FORMAT_FEATURE_VIDEO_ENCODE_DPB_BIT_KHR,
+    {VK_FORMAT_FEATURE_2_VIDEO_ENCODE_DPB_BIT_KHR,
           VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR},
-    {VK_FORMAT_FEATURE_VIDEO_ENCODE_INPUT_BIT_KHR,
+    {VK_FORMAT_FEATURE_2_VIDEO_ENCODE_INPUT_BIT_KHR,
           VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR},
 #endif
 #endif
@@ -555,6 +555,46 @@ _get_usage (guint64 feature)
   }
 
   return usage;
+}
+
+static guint64
+_get_feature_flags (VkPhysicalDevice gpu, gpointer func, VkFormat format,
+    VkImageTiling tiling)
+{
+  VkFormatProperties prop = { 0 };
+#if defined (VK_KHR_get_physical_device_properties2)
+#if defined (VK_KHR_format_feature_flags2)
+  VkFormatProperties3KHR prop3 = {
+    .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR,
+  };
+#endif
+  VkFormatProperties2KHR prop2 = {
+    .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2_KHR,
+#if defined (VK_KHR_format_feature_flags2)
+    .pNext = &prop3,
+#endif
+  };
+
+  if (func) {
+    PFN_vkGetPhysicalDeviceFormatProperties2KHR
+        gst_vkGetPhysicalDeviceFormatProperties2 = func;
+
+    gst_vkGetPhysicalDeviceFormatProperties2 (gpu, format, &prop2);
+#if defined (VK_KHR_format_feature_flags2)
+    return tiling == VK_IMAGE_TILING_LINEAR ?
+        prop3.linearTilingFeatures : prop3.optimalTilingFeatures;
+#else
+    return tiling == VK_IMAGE_TILING_LINEAR ?
+        prop2.formatProperties.linearTilingFeatures :
+        prop2.formatProperties.optimalTilingFeatures;
+#endif
+  }
+#endif /* defined (VK_KHR_get_physical_device_properties2) */
+
+  /* fallback */
+  vkGetPhysicalDeviceFormatProperties (gpu, format, &prop);
+  return tiling == VK_IMAGE_TILING_LINEAR ?
+      prop.linearTilingFeatures : prop.optimalTilingFeatures;
 }
 
 /**
@@ -580,11 +620,8 @@ gst_vulkan_format_from_video_info_2 (GstVulkanPhysicalDevice * physical_device,
 {
   int i;
   VkPhysicalDevice gpu;
-#if (defined(VK_VERSION_1_3) || defined(VK_VERSION_1_2) && VK_HEADER_VERSION >= 195)
-  VkFormatProperties2 prop = {
-    .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
-  };
-  PFN_vkGetPhysicalDeviceFormatProperties2
+#if defined (VK_KHR_get_physical_device_properties2)
+  PFN_vkGetPhysicalDeviceFormatProperties2KHR
       gst_vkGetPhysicalDeviceFormatProperties2 = NULL;
 
   gst_vkGetPhysicalDeviceFormatProperties2 =
@@ -594,49 +631,28 @@ gst_vulkan_format_from_video_info_2 (GstVulkanPhysicalDevice * physical_device,
     gst_vkGetPhysicalDeviceFormatProperties2 =
         gst_vulkan_instance_get_proc_address (physical_device->instance,
         "vkGetPhysicalDeviceFormatProperties2KHR");
+#else
+  gpointer gst_vkGetPhysicalDeviceFormatProperties2 = NULL;
 #endif
 
   gpu = gst_vulkan_physical_device_get_handle (physical_device);
 
   for (i = 0; i < G_N_ELEMENTS (vk_formats_map); i++) {
-    guint64 feats_primary = 0, feats_secondary = 0;
-    VkFormatProperties primary_format_props = { 0, };
-    VkFormatProperties secondary_format_props = { 0, };
+    guint64 feats_primary, feats_secondary = 0;
     VkImageUsageFlags usage = 0;
 
     if (vk_formats_map[i].format != GST_VIDEO_INFO_FORMAT (info))
       continue;
 
-#if (defined(VK_VERSION_1_3) || defined(VK_VERSION_1_2) && VK_HEADER_VERSION >= 195)
-    if (gst_vkGetPhysicalDeviceFormatProperties2) {
-      gst_vkGetPhysicalDeviceFormatProperties2 (gpu, vk_formats_map[i].vkfrmt,
-          &prop);
-      primary_format_props = prop.formatProperties;
+    feats_primary = _get_feature_flags (gpu,
+        gst_vkGetPhysicalDeviceFormatProperties2, vk_formats_map[i].vkfrmt,
+        tiling);
 
-      if (vk_formats_map[i].vkfrmt != vk_formats_map[i].vkfrmts[0]) {
-        gst_vkGetPhysicalDeviceFormatProperties2 (gpu,
-            vk_formats_map[i].vkfrmts[0], &prop);
-        secondary_format_props = prop.formatProperties;
-      }
-    } else
-#endif
-    {
-      vkGetPhysicalDeviceFormatProperties (gpu, vk_formats_map[i].vkfrmt,
-          &primary_format_props);
-
-      if (vk_formats_map[i].vkfrmt != vk_formats_map[i].vkfrmts[0]) {
-        vkGetPhysicalDeviceFormatProperties (gpu, vk_formats_map[i].vkfrmts[0],
-            &secondary_format_props);
-      }
+    if (vk_formats_map[i].vkfrmt != vk_formats_map[i].vkfrmts[0]) {
+      feats_secondary = _get_feature_flags (gpu,
+          gst_vkGetPhysicalDeviceFormatProperties2,
+          vk_formats_map[i].vkfrmts[0], tiling);
     }
-
-    feats_primary = tiling == VK_IMAGE_TILING_LINEAR ?
-        primary_format_props.linearTilingFeatures :
-        primary_format_props.optimalTilingFeatures;
-
-    feats_secondary = tiling == VK_IMAGE_TILING_LINEAR ?
-        secondary_format_props.linearTilingFeatures :
-        secondary_format_props.optimalTilingFeatures;
 
     if (GST_VIDEO_INFO_IS_RGB (info)) {
       if ((GST_VIDEO_INFO_COLORIMETRY (info).transfer ==
