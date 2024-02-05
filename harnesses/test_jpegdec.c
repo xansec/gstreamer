@@ -65,8 +65,8 @@ int main(int argc, char **argv)
   gst_bin_add_many (GST_BIN (pipeline), source, dec, sink, NULL);
   gst_element_link_many (source, dec, sink, NULL);
 
-  /* Set pipeline to READY so we can provide data to appsrc - commented
   gst_element_set_state (GST_ELEMENT (pipeline), GST_STATE_READY);
+  /* Use raw buffer data source - commented as we are using a file
   buf = gst_buffer_new_wrapped_full (0, (gpointer) data, size,
       0, size, NULL, NULL);
   g_object_set (G_OBJECT (source), "size", size, NULL);
@@ -106,8 +106,6 @@ int main(int argc, char **argv)
   //sample = gst_app_sink_pull_sample (GST_APP_SINK (sink));
   //fail_unless (sample == NULL);
   //fail_unless (gst_app_sink_is_eos (GST_APP_SINK (sink)));
-  //while (!gst_app_sink_is_eos (GST_APP_SINK (sink)));
-  //gst_sample_unref(sample);
 
 
   /* Go back to NULL */
