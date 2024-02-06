@@ -107,7 +107,6 @@ int main(int argc, char **argv)
   //fail_unless (sample == NULL);
   //fail_unless (gst_app_sink_is_eos (GST_APP_SINK (sink)));
 
-
   /* Go back to NULL */
   gst_element_set_state (GST_ELEMENT (pipeline), GST_STATE_NULL);
 
