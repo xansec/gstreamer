@@ -3,7 +3,7 @@ if get_option('harnesses').disabled()
 endif
 
 harnesses = [
-  ['test_jpegdec.c']
+  ['test_gstjpegdec.c']
 ]
 
 glib_req = '>= 2.64.0'
@@ -18,9 +18,9 @@ gstnet_dep = dependency('gstreamer-net-1.0', version : gst_req,
   fallback : ['gstreamer', 'gst_net_dep'])
 #gstcontroller_dep = dependency('gstreamer-controller-1.0', version : gst_req,
 #  fallback : ['gstreamer', 'gst_controller_dep'])
-gstcheck_dep = dependency('gstreamer-check-1.0', version : gst_req,
-  required: true,
-  fallback : ['gstreamer', 'gst_check_dep'])
+#gstcheck_dep = dependency('gstreamer-check-1.0', version : gst_req,
+#  required: true,
+#  fallback : ['gstreamer', 'gst_check_dep'])
 gstpbutils_dep = dependency('gstreamer-pbutils-1.0', version : gst_req,
     fallback : ['gst-plugins-base', 'pbutils_dep'])
 #gstallocators_dep = dependency('gstreamer-allocators-1.0', version : gst_req,
@@ -45,7 +45,7 @@ gstvideo_dep = dependency('gstreamer-video-1.0', version : gst_req,
     fallback : ['gst-plugins-base', 'video_dep'])
 gio_dep = dependency('gio-2.0', version: glib_req)
 
-common_deps = [gst_dep, gst_dep, gstbase_dep, gstnet_dep, gstcheck_dep,
+common_deps = [gst_dep, gst_dep, gstbase_dep, gstnet_dep, #gstcheck_dep,
   gstvideo_dep, gstpbutils_dep, gstrtp_dep, gstrtsp_dep, gsttag_dep,
   gstapp_dep, gio_dep]
 
@@ -80,7 +80,7 @@ foreach harness : harnesses
 
   exe = executable(test_name, [extra_sources, file_name],
     dependencies: common_deps + extra_deps,
-    c_args: ['-g']
-    #link_args: ['-fsanitize=address']
+    c_args: ['-g', '-fsanitize=fuzzer,address'],
+    link_args: ['-fsanitize=fuzzer,address']
   )
 endforeach

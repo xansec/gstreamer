@@ -3,7 +3,7 @@ FROM ubuntu AS builder
 RUN apt update -y && DEBIAN_FRONTEND=noninteractive apt install -y \
   python3 \
   python3-pip \
-  afl++ \
+  clang \
   ninja-build \
   git \
   flex \
@@ -19,7 +19,7 @@ RUN pip3 install meson
 WORKDIR /work
 COPY . .
 
-RUN CC=afl-gcc CXX=afl-g++ meson setup \
+RUN CC=clang CXX=clang++ meson setup \
   --libdir=lib \
   --default-library=shared \
   -Dharnesses=enabled \
@@ -55,10 +55,10 @@ RUN CC=afl-gcc CXX=afl-g++ meson setup \
   -Dgst-plugins-base:opus=disabled \
   -Dgst-plugins-base:pango=disabled \
   -Dgst-plugins-good:jpeg=enabled \
-  -Dgstreamer:check=enabled \
+  #-Dgstreamer:check=enabled \
   builddir \
     .
-RUN CC=afl-gcc CXX=afl-g++ ninja -C builddir
+RUN CC=clang CXX=clang++ ninja -C builddir
 
 FROM ubuntu
 RUN apt update -y && DEBIAN_FRONTEND=noninteractive apt install -y \
